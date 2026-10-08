@@ -1,16 +1,16 @@
 """
-Lab 7: The Collision Resolver -- starter.
+Lab 7: The Collision Resolver -- completed.
 
 Complete the three classes below. See
 Lab_07_The_Collision_Resolver.md, Part B, for the full requirements.
 """
 
-from typing import Generic, Hashable, List, Optional, Tuple, TypeVar
+from typing import Generic, Hashable, List, Optional, TypeVar
 
 K = TypeVar("K", bound=Hashable)
 V = TypeVar("V")
 
-_TOMBSTONE = object()  # sentinel marking a deleted open-addressing slot
+_TOMBSTONE = object()
 
 
 class _ChainNode(Generic[K, V]):
@@ -33,19 +33,67 @@ class ChainedHashMap(Generic[K, V]):
         return self._count
 
     def insert(self, key: K, value: V) -> None:
-        """Insert, or update in place if `key` already exists. Resize (double + rehash) once load factor > 0.75."""
-        # TODO
-        raise NotImplementedError
+        """Insert, or update in place if key already exists."""
+        index = hash(key) % len(self._buckets)
+        current = self._buckets[index]
+
+        while current is not None:
+            if current.key == key:
+                current.value = value
+                return
+            current = current.next
+
+        new_node = _ChainNode(key, value)
+        new_node.next = self._buckets[index]
+        self._buckets[index] = new_node
+
+        self._count += 1
+
+        if self._count / len(self._buckets) > 0.75:
+            old_buckets = self._buckets
+            self._buckets = [None] * (len(old_buckets) * 2)
+            self._count = 0
+
+            for node in old_buckets:
+                current = node
+
+                while current is not None:
+                    self.insert(current.key, current.value)
+                    current = current.next
 
     def get(self, key: K) -> V:
-        """Return the value for `key`. Raise KeyError if missing."""
-        # TODO
-        raise NotImplementedError
+        """Return the value for key. Raise KeyError if missing."""
+        index = hash(key) % len(self._buckets)
+        current = self._buckets[index]
+
+        while current is not None:
+            if current.key == key:
+                return current.value
+
+            current = current.next
+
+        raise KeyError(key)
 
     def delete(self, key: K) -> None:
-        """Remove `key`. Raise KeyError if missing."""
-        # TODO
-        raise NotImplementedError
+        """Remove key. Raise KeyError if missing."""
+        index = hash(key) % len(self._buckets)
+        current = self._buckets[index]
+        previous = None
+
+        while current is not None:
+            if current.key == key:
+                if previous is None:
+                    self._buckets[index] = current.next
+                else:
+                    previous.next = current.next
+
+                self._count -= 1
+                return
+
+            previous = current
+            current = current.next
+
+        raise KeyError(key)
 
 
 class LinearProbingHashMap(Generic[K, V]):
@@ -60,35 +108,86 @@ class LinearProbingHashMap(Generic[K, V]):
         return self._count
 
     def insert(self, key: K, value: V) -> None:
-        """Resize (double + rehash) once load factor > 0.7."""
-        # TODO
-        raise NotImplementedError
+        """Resize once the load factor would exceed 0.7."""
+
+        if (self._count + 1) / len(self._keys) > 0.7:
+            old_keys = self._keys
+            old_values = self._values
+
+            self._keys = [None] * (len(old_keys) * 2)
+            self._values = [None] * (len(old_values) * 2)
+            self._count = 0
+
+            for i in range(len(old_keys)):
+                if (
+                    old_keys[i] is not None
+                    and old_keys[i] is not _TOMBSTONE
+                ):
+                    self.insert(old_keys[i], old_values[i])
+
+        index = hash(key) % len(self._keys)
+        i = 0
+
+        while True:
+            probe_index = (index + i) % len(self._keys)
+
+            if self._keys[probe_index] is None:
+                self._keys[probe_index] = key
+                self._values[probe_index] = value
+                self._count += 1
+                return
+
+            if self._keys[probe_index] is _TOMBSTONE:
+                self._keys[probe_index] = key
+                self._values[probe_index] = value
+                self._count += 1
+                return
+
+            if self._keys[probe_index] == key:
+                self._values[probe_index] = value
+                return
+
+            i += 1
 
     def search(self, key: K) -> V:
-        """Return the value for `key`. Raise KeyError if missing."""
-        # TODO
-        raise NotImplementedError
+        """Return the value for key. Raise KeyError if missing."""
+        index = hash(key) % len(self._keys)
+        i = 0
+
+        while True:
+            probe_index = (index + i) % len(self._keys)
+
+            if self._keys[probe_index] is None:
+                raise KeyError(key)
+
+            if self._keys[probe_index] == key:
+                return self._values[probe_index]  # type: ignore
+
+            i += 1
 
     def delete(self, key: K) -> None:
-        """Remove `key` using a tombstone (not None) so later probes don't stop early. Raise KeyError if missing."""
-        # TODO
-        raise NotImplementedError
+        """Remove key using a tombstone."""
+        index = hash(key) % len(self._keys)
+        i = 0
+
+        while True:
+            probe_index = (index + i) % len(self._keys)
+
+            if self._keys[probe_index] is None:
+                raise KeyError(key)
+
+            if self._keys[probe_index] == key:
+                self._keys[probe_index] = _TOMBSTONE
+                self._values[probe_index] = None
+                self._count -= 1
+                return
+
+            i += 1
 
 
 class QuadraticProbingHashMap(Generic[K, V]):
     """
     Open addressing with quadratic probing and tombstone deletion.
-
-    Pitfall to design around: with a power-of-2 table size, the probe
-    sequence (idx + i^2) mod size does NOT reach every slot -- it can
-    cycle through only about half of them, so the table can appear
-    "full" and raise/loop forever even though empty slots exist
-    elsewhere. Two standard fixes, pick one:
-      (a) use a PRIME table size (so the quadratic sequence covers all
-          slots whenever load factor < 1), or
-      (b) resize proactively -- check load factor BEFORE attempting an
-          insert's probe sequence, not only after a successful insert.
-    Using both is safest.
     """
 
     def __init__(self, initial_size: int = 17) -> None:
@@ -99,17 +198,108 @@ class QuadraticProbingHashMap(Generic[K, V]):
     def __len__(self) -> int:
         return self._count
 
+    @staticmethod
+    def _is_prime(number: int) -> bool:
+        """Return True if number is prime."""
+        if number < 2:
+            return False
+
+        divisor = 2
+
+        while divisor * divisor <= number:
+            if number % divisor == 0:
+                return False
+            divisor += 1
+
+        return True
+
+    @classmethod
+    def _next_prime(cls, number: int) -> int:
+        """Return the next prime number at or above number."""
+        while not cls._is_prime(number):
+            number += 1
+
+        return number
+
+    def _resize(self) -> None:
+        """Grow the table and rehash all existing entries."""
+        old_keys = self._keys
+        old_values = self._values
+
+        new_size = self._next_prime(len(old_keys) * 2)
+
+        self._keys = [None] * new_size
+        self._values = [None] * new_size
+        self._count = 0
+
+        for i in range(len(old_keys)):
+            if (
+                old_keys[i] is not None
+                and old_keys[i] is not _TOMBSTONE
+            ):
+                self.insert(old_keys[i], old_values[i])
+
     def insert(self, key: K, value: V) -> None:
-        """Resize (grow + rehash) once load factor > 0.7 -- see the pitfall note above."""
-        # TODO
-        raise NotImplementedError
+        """Resize once the load factor would exceed 0.7."""
+
+        if (self._count + 1) / len(self._keys) > 0.7:
+            self._resize()
+
+        index = hash(key) % len(self._keys)
+        i = 0
+
+        while True:
+            probe_index = (index + i * i) % len(self._keys)
+
+            if self._keys[probe_index] is None:
+                self._keys[probe_index] = key
+                self._values[probe_index] = value
+                self._count += 1
+                return
+
+            if self._keys[probe_index] is _TOMBSTONE:
+                self._keys[probe_index] = key
+                self._values[probe_index] = value
+                self._count += 1
+                return
+
+            if self._keys[probe_index] == key:
+                self._values[probe_index] = value
+                return
+
+            i += 1
 
     def search(self, key: K) -> V:
-        """Return the value for `key`. Raise KeyError if missing."""
-        # TODO
-        raise NotImplementedError
+        """Return the value for key. Raise KeyError if missing."""
+        index = hash(key) % len(self._keys)
+        i = 0
+
+        while True:
+            probe_index = (index + i * i) % len(self._keys)
+
+            if self._keys[probe_index] is None:
+                raise KeyError(key)
+
+            if self._keys[probe_index] == key:
+                return self._values[probe_index]  # type: ignore
+
+            i += 1
 
     def delete(self, key: K) -> None:
-        """Remove `key` using a tombstone. Raise KeyError if missing."""
-        # TODO
-        raise NotImplementedError
+        """Remove key using a tombstone."""
+        index = hash(key) % len(self._keys)
+        i = 0
+
+        while True:
+            probe_index = (index + i * i) % len(self._keys)
+
+            if self._keys[probe_index] is None:
+                raise KeyError(key)
+
+            if self._keys[probe_index] == key:
+                self._keys[probe_index] = _TOMBSTONE
+                self._values[probe_index] = None
+                self._count -= 1
+                return
+
+            i += 1
